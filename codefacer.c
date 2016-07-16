@@ -14,6 +14,8 @@ MYSQL db;
 int rows_count, running, max_running, id;
 global_conf_t global_conf;
 
+#define buf_size 2047
+
 void sigterm_handler(int signo){ 
     if (signo == SIGTERM) {
         mysql_close(&db);
@@ -55,10 +57,48 @@ void init(){
 }
 
 void createConf(char *confPath, char *repoPath, char *username, char *name) {
-    char revisions[2048] = "\0";
-    char rcs[2048] = "\0";
+    char revisions[100 * buf_size] = "\0";
+    char rcs[100 * buf_size] = "\0";
     FILE *conf = fopen(confPath, "wb");
-    fprintf(conf, "project: %s_%s\n", username, name);
+    char command[buf_size];
+    char buf[buf_size];
+    sprintf(command, "git --git-dir=%s for-each-ref --format='%%(*committerdate:raw)%%(committerdate:raw) %%(refname) %%(*objectname) %%(objectname)' refs/tags | sort -n | awk '{split($3, temp, \"refs/tags/\"); print temp[2]; }'", repoPath);
+    FILE *stream = popen(command, "r");
+    char cur[buf_size];
+    char rc[buf_size] = "'', ";
+    char preIsRC = 0;
+    char first = 1;
+    while (fgets(buf, buf_size, stream)) {
+        {//if (buf[0] == 'v') {
+            buf[strlen(buf) - 1] = '\0';
+            if (first) {
+                sprintf(cur, "'%s', ", buf);
+                strcpy(revisions, cur);
+                strcpy(rcs, cur);
+                first = 0;
+                continue;
+            }
+            //printf("%s ", buf);
+            if (strstr(buf, "rc") > 0 || strstr(buf, "RC") > 0) {
+                if (preIsRC) {
+                    //do nothing
+                } else {
+                    preIsRC = 1;
+                    sprintf(rc, "'%s', ", buf);
+                }
+                //printf("\n");
+            } else {
+                sprintf(cur, "'%s', ", buf);
+                //printf("%s %s\n", cur, rc);
+                strcat(revisions, cur);
+                strcat(rcs, rc);
+                strcpy(rc, "'',");
+                preIsRC = 0;
+            }
+        }
+    }
+    printf("%s\n\n%s", revisions, rcs);
+    fprintf(conf, "project: %s@%s\n", username, name);
     fprintf(conf, "description: \n");
     fprintf(conf, "repo: .\n");
     fprintf(conf, "revisions: [%s]\n", revisions);
@@ -68,7 +108,8 @@ void createConf(char *confPath, char *repoPath, char *username, char *name) {
 }
 
 int run(){
-    char query[1024] = "SELECT name,path,creator_id FROM projects";
+    system("mysql -ucodeface -pcodeface < /home/git/codeface/datamodel/codeface_schema.sql");
+    char query[buf_size] = "SELECT name,path,creator_id FROM projects";
     int ret = mysql_query(&db, query);
     if (ret != 0) {
         syslog(LOG_ERR, "SQL Query Failed!");
@@ -81,7 +122,7 @@ int run(){
         return 0;
     }
 
-    char command[2048];
+    char command[buf_size];
     for (int i = 0; i < rows_count; ++i) {
         MYSQL_ROW row = mysql_fetch_row(result);
         char *name = row[0];
@@ -93,14 +134,14 @@ int run(){
             MYSQL_RES *resultUN = mysql_store_result(&db);
             MYSQL_ROW rowUN = mysql_fetch_row(resultUN);
             username = rowUN[0];
-            char repoPath[1024];
+            char repoPath[buf_size];
             strcpy(repoPath, global_conf.repo_path);
             strcat(repoPath, username);
             strcat(repoPath, "/");
             strcat(repoPath, path);
             strcat(repoPath, ".git/");
 
-            char confPath[1024];
+            char confPath[buf_size];
             strcpy(confPath, global_conf.conf_path);
             mkdir(confPath, S_IRWXU | S_IRWXG);
             strcat(confPath, username);
