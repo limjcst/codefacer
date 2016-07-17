@@ -97,17 +97,19 @@ void createConf(char *confPath, char *repoPath, char *username, char *name) {
             }
         }
     }
-    printf("%s\n\n%s", revisions, rcs);
+    printf("%s\n\n%s\n\n", revisions, rcs);
     fprintf(conf, "project: %s@%s\n", username, name);
     fprintf(conf, "description: \n");
     fprintf(conf, "repo: .\n");
     fprintf(conf, "revisions: [%s]\n", revisions);
     fprintf(conf, "rcs: [%s]\n", rcs);
     fprintf(conf, "tagging: committer2author\n");
+    fprintf(conf, "sloccount: true\n");
+    fprintf(conf, "understand: true\n");
     fclose(conf);
 }
 
-int run(){
+int run(int jobs){
     system("mysql -ucodeface -pcodeface < /home/git/codeface/datamodel/codeface_schema.sql");
     char query[buf_size] = "SELECT name,path,creator_id FROM projects";
     int ret = mysql_query(&db, query);
@@ -123,6 +125,7 @@ int run(){
     }
 
     char command[buf_size];
+    printf("%d projects to analyze\n", rows_count);
     for (int i = 0; i < rows_count; ++i) {
         MYSQL_ROW row = mysql_fetch_row(result);
         char *name = row[0];
@@ -152,7 +155,7 @@ int run(){
 
             createConf(confPath, repoPath, username, name);
 
-            sprintf(command, "codeface run -c %scodeface.conf -p %s %s %s", global_conf.codeface_path, confPath, global_conf.result_path, repoPath);
+            sprintf(command, "codeface -j %d run -c %scodeface.conf -p %s %s %s", jobs, global_conf.codeface_path, confPath, global_conf.result_path, repoPath);
             if (system(command) < 0) {}
 
             mysql_free_result(resultUN);
@@ -165,8 +168,14 @@ int run(){
 
 int main(void) {
     init();
-
-    run();
+    FILE *stream = popen("nproc", "r");
+    int jobs;
+    fscanf(stream, "%d", &jobs);
+    jobs -= 1;
+    if (jobs == 0) {
+        jobs = 1;
+    }
+    run(jobs);
 
     return 0;
 } 
