@@ -111,7 +111,7 @@ void createConf(char *confPath, char *repoPath, char *username, char *name) {
 
 int run(int jobs){
     system("mysql -ucodeface -pcodeface < /home/git/codeface/datamodel/codeface_schema.sql");
-    char query[buf_size] = "SELECT name,path,creator_id FROM projects";
+    char query[buf_size] = "SELECT max(id) FROM projects";
     int ret = mysql_query(&db, query);
     if (ret != 0) {
         syslog(LOG_ERR, "SQL Query Failed!");
@@ -123,14 +123,26 @@ int run(int jobs){
         mysql_free_result(result);
         return 0;
     }
+    MYSQL_ROW row = mysql_fetch_row(result);
+    int maxID = atoi(row[0]);
+    printf("%d\n\n", maxID);
+    mysql_free_result(result);
 
     char command[buf_size];
-    printf("%d projects to analyze\n", rows_count);
-    for (int i = 0; i < rows_count; ++i) {
+    for (int i = 1; i <= maxID; ++i) {
+        sprintf(query, "select name, path, creator_id from projects WHERE id=%d", i);
+        if (mysql_query(&db, query) == 0) {
+            result = mysql_store_result(&db);
+            if (mysql_num_rows(result) == 0) {
+                mysql_free_result(result);
+                continue;
+            }
+        }
         MYSQL_ROW row = mysql_fetch_row(result);
         char *name = row[0];
         char *path = row[1];
         int id = atoi(row[2]);
+        printf("%s %s %d\n", name, path, id);
         char *username;
         sprintf(query, "select username from users WHERE id=%d", id);
         if (mysql_query(&db, query) == 0) {
@@ -160,9 +172,9 @@ int run(int jobs){
 
             mysql_free_result(resultUN);
         }
+        mysql_free_result(result);
     }
 
-    mysql_free_result(result);
     return 0;
 }
 
