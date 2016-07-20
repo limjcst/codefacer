@@ -6,6 +6,7 @@
 #include <syslog.h>
 #include <signal.h>
 #include <mysql/mysql.h>
+#include <time.h>
 
 #include "config.h"
 
@@ -56,6 +57,82 @@ void init(){
     syslog(LOG_INFO, "codefacer daemon initialized");
 }
 
+char recs[buf_size][43];
+long long commitTime[buf_size];
+int head;
+const int tail = buf_size - 1;
+
+/**
+ * Translate from python code
+ * codeface/codeface/util.py
+ *   generate_analysis_windows(repo, window_size_months)
+ */
+
+int generateRevision(FILE *conf, char *repo) {
+    char command[buf_size];
+    char buf[buf_size];
+    char t_buf[buf_size];
+    head = buf_size;
+    int window_size_weeks = 1;
+    struct tm latest_commit, date_temp;
+    time_t temp, week;
+    week = 7 * 86400;
+    sprintf(command, "git --git-dir=%s show --format=%%ad  --date=iso8601", repo);
+    FILE *stream = popen(command, "r");
+    fgets(buf, buf_size, stream);
+    strptime(buf, "%Y-%m-%d %H:%M:%S %z", &latest_commit);
+    fclose(stream);
+    temp = mktime(&latest_commit);
+    latest_commit = *localtime(&temp);
+    strftime(buf, buf_size, "--before=%Y-%m-%dT%H:%M:%S%z", &latest_commit);
+    sprintf(command, "git --git-dir=%s log --no-merges --format='%%H %%ct' --max-count=1 %s", repo, buf);
+    stream = popen(command, "r");
+    while (fgets(buf, buf_size, stream)) {
+        --head;
+        sscanf(buf, "%s %lld", recs[head], &commitTime[head]);
+    }
+    fclose(stream);
+    strftime(buf, buf_size, "--before=%Y-%m-%dT%H:%M:%S%z", &date_temp);
+    int start = window_size_weeks;  // Window size weeks ago
+    int end = 0;
+    while (start != end) {
+        temp = mktime(&latest_commit);
+        temp -= week * start;
+        date_temp = *gmtime(&temp);
+        strftime(buf, buf_size, "--before=%Y-%m-%dT%H:%M:%S%z", &date_temp);
+        sprintf(command, "git --git-dir=%s log --no-merges --format='%%H %%ct' --max-count=1 %s", repo, buf);
+        stream = popen(command, "r");
+        if (fgets(buf, buf_size, stream)) {
+            end = start;
+            start += window_size_weeks;
+        } else {
+            fclose(stream);
+            start = end;
+            sprintf(command, "git --git-dir=%s log --no-merges --format='%%H %%ct' --max-count=1 --reverse", repo);
+            stream = popen(command, "r");
+            fgets(buf, buf_size, stream);
+        }
+        buf[strlen(buf) - 1] = '\0';
+        sprintf(t_buf, "%s %lld", recs[head], commitTime[head]);
+        if (strcmp(buf, t_buf) != 0) {
+            --head;
+            sscanf(buf, "%s %lld", recs[head], &commitTime[head]);
+        }
+        fclose(stream);
+    }
+    // Check that commit dates are monotonic, in some cases the earliest
+    // first commit does not carry the earliest commit date
+    if (head < tail && commitTime[head] > commitTime[head + 1]) {
+        ++head;
+    }
+    int i = 0;
+    for (; head < tail; ++ head) {
+        fprintf(conf, "'%s', ", recs[head]);
+        ++i;
+    }
+    return i;
+}
+
 void createConf(char *confPath, char *repoPath, char *username, char *name) {
     char revisions[100 * buf_size] = "\0";
     char rcs[100 * buf_size] = "\0";
@@ -68,6 +145,7 @@ void createConf(char *confPath, char *repoPath, char *username, char *name) {
     char rc[buf_size] = "'', ";
     char preIsRC = 0;
     char first = 1;
+    char tagExist = 0;
     while (fgets(buf, buf_size, stream)) {
         {//if (buf[0] == 'v') {
             buf[strlen(buf) - 1] = '\0';
@@ -94,15 +172,28 @@ void createConf(char *confPath, char *repoPath, char *username, char *name) {
                 strcat(rcs, rc);
                 strcpy(rc, "'',");
                 preIsRC = 0;
+                tagExist = 1;
             }
         }
     }
-    printf("%s\n\n%s\n\n", revisions, rcs);
+    fclose(stream);
     fprintf(conf, "project: %s@%s\n", username, name);
     fprintf(conf, "description: \n");
     fprintf(conf, "repo: .\n");
-    fprintf(conf, "revisions: [%s]\n", revisions);
-    fprintf(conf, "rcs: [%s]\n", rcs);
+    if (tagExist) {
+        fprintf(conf, "revisions: [%s]\n", revisions);
+        fprintf(conf, "rcs: [%s]\n", rcs);
+    } else {
+        //use commit hash substitute
+        fprintf(conf, "revisions: [");
+        int i = generateRevision(conf, repoPath);
+        fprintf(conf, "]\n");
+        fprintf(conf, "rcs: [");
+        for (; i > 0; --i) {
+            fprintf(conf, "'', ");
+        }
+        fprintf(conf, "]\n");
+    }
     fprintf(conf, "tagging: committer2author\n");
     fprintf(conf, "sloccount: true\n");
     fprintf(conf, "understand: true\n");
