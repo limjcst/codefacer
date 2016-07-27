@@ -201,6 +201,15 @@ void createConf(char *confPath, char *repoPath, char *username, char *name) {
 }
 
 int run(int jobs){
+    char command[buf_size];
+    sprintf(command, "rm -f %slog/codeface.log.R.*", global_conf.codeface_path);
+    if (system(command)) {
+        printf("Command:'%s' failed", command);
+    }
+    sprintf(command, "rm -rf %s*", global_conf.result_path);
+    if (system(command)) {
+        printf("Command:'%s' failed", command);
+    }
     system("mysql -ucodeface -pcodeface < /home/git/codeface/datamodel/codeface_schema.sql");
     char query[buf_size] = "SELECT max(id) FROM projects";
     int ret = mysql_query(&db, query);
@@ -219,7 +228,6 @@ int run(int jobs){
     printf("%d\n\n", maxID);
     mysql_free_result(result);
 
-    char command[buf_size];
     for (int i = 1; i <= maxID; ++i) {
         sprintf(query, "select name, path, creator_id from projects WHERE id=%d", i);
         if (mysql_query(&db, query) == 0) {
