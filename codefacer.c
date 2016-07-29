@@ -41,14 +41,14 @@ void init(){
 
     init_configuration(&global_conf);
     max_running = MAX_RUNNING;
-	if (global_conf.max_running != 0)
-		max_running = global_conf.max_running;
+    if (global_conf.max_running != 0)
+        max_running = global_conf.max_running;
 
     mysql_init(&db);
     if (!mysql_real_connect(&db, global_conf.address, global_conf.username,
                 global_conf.password, global_conf.database, 0, NULL, 0)) {
         syslog(LOG_ERR, "Failed to connec to database!");
-	    syslog(LOG_ERR, mysql_error(&db));
+        syslog(LOG_ERR, "%s", mysql_error(&db));
         exit(1);
     }
 
@@ -79,7 +79,10 @@ int generateRevision(FILE *conf, char *repo) {
     week = 7 * 86400;
     sprintf(command, "git --git-dir=%s show --format=%%ad  --date=iso8601", repo);
     FILE *stream = popen(command, "r");
-    fgets(buf, buf_size, stream);
+    if (fgets(buf, buf_size, stream) == 0 || buf[0] < '0' || buf[0] > '9') {
+        fclose(stream);
+        return 1;
+    }
     strptime(buf, "%Y-%m-%d %H:%M:%S %z", &latest_commit);
     fclose(stream);
     temp = mktime(&latest_commit);
@@ -110,7 +113,10 @@ int generateRevision(FILE *conf, char *repo) {
             start = end;
             sprintf(command, "git --git-dir=%s log --no-merges --format='%%H %%ct' --max-count=1 --reverse", repo);
             stream = popen(command, "r");
-            fgets(buf, buf_size, stream);
+            if (fgets(buf, buf_size, stream) == 0) {
+                fclose(stream);
+                continue;
+            }
         }
         buf[strlen(buf) - 1] = '\0';
         sprintf(t_buf, "%s %lld", recs[head], commitTime[head]);
@@ -133,7 +139,7 @@ int generateRevision(FILE *conf, char *repo) {
     return i;
 }
 
-void createConf(char *confPath, char *repoPath, char *username, char *name) {
+int createConf(char *confPath, char *repoPath, char *username, char *name) {
     char revisions[100 * buf_size] = "\0";
     char rcs[100 * buf_size] = "\0";
     FILE *conf = fopen(confPath, "wb");
@@ -192,6 +198,10 @@ void createConf(char *confPath, char *repoPath, char *username, char *name) {
         //use commit hash substitute
         fprintf(conf, "revisions: [");
         int i = generateRevision(conf, repoPath);
+        if (i == 0) {
+            fclose(conf);
+            return 1;
+        }
         fprintf(conf, "]\n");
         fprintf(conf, "rcs: [");
         for (; i > 0; --i) {
@@ -203,10 +213,12 @@ void createConf(char *confPath, char *repoPath, char *username, char *name) {
     fprintf(conf, "sloccount: true\n");
     fprintf(conf, "understand: true\n");
     fclose(conf);
+    return 0;
 }
 
 int run(int jobs){
     char command[buf_size];
+    // remove the results left
     sprintf(command, "rm -f %slog/codeface.log.R.*", global_conf.codeface_path);
     if (system(command)) {
         printf("Command:'%s' failed", command);
@@ -215,7 +227,11 @@ int run(int jobs){
     if (system(command)) {
         printf("Command:'%s' failed", command);
     }
-    system("mysql -ucodeface -pcodeface < /home/git/codeface/datamodel/codeface_schema.sql");
+    // empty database
+    sprintf(command, "mysql -ucodeface -pcodeface -Nse 'show tables' codeface | while read table; do mysql -ucodeface -pcodeface -e \"SET FOREIGN_KEY_CHECKS = 0; truncate table $table\" codeface; done");
+    if (system(command)) {
+        // nothing
+    }
     char query[buf_size] = "SELECT max(id) FROM projects";
     int ret = mysql_query(&db, query);
     if (ret != 0) {
@@ -269,7 +285,11 @@ int run(int jobs){
             strcat(confPath, name);
             strcat(confPath, ".conf");
 
-            createConf(confPath, repoPath, username, name);
+            if (createConf(confPath, repoPath, username, name)) {
+                mysql_free_result(resultUN);
+                printf("Nothing to analyze!\n");
+                continue;
+            }
 
             sprintf(command, "codeface -j %d run -c %scodeface.conf -p %s %s %s", jobs, global_conf.codeface_path, confPath, global_conf.result_path, repoPath);
             if (system(command) < 0) {}
@@ -285,9 +305,10 @@ int run(int jobs){
 int main(void) {
     init();
     FILE *stream = popen("nproc", "r");
-    int jobs;
-    fscanf(stream, "%d", &jobs);
-    jobs /= 2;
+    int jobs = 0;
+    if (fscanf(stream, "%d", &jobs)) {
+       jobs /= 2;
+    }
     if (jobs == 0) {
         jobs = 1;
     }
