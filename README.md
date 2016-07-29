@@ -9,13 +9,13 @@ This is an auto tool for [siemens/codeface] using the local GitLab repository
 
 * Function
 
-  Codefacer will create a conf file for each project, using the git tag information to figure out the revision and rcs list, setting tagging `committer2author`.
-  If a project has no tag, it uses the method translate from
+  Codefacer will create a conf file for each project, setting tagging `committer2author`, using the method translate from
   ```
   codeface/codeface/util.py
   generate_analysis_windows(repo, window_size_months)
   ```
-  to create revisions, with a two week window.
+  to create revisions, with a two week window. Tag information is ignored here.
+
   To distinguish each project, Codefacer uses `username@path` as the project name.
   After each configure file created, call Codeface.
   

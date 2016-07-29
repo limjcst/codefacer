@@ -81,7 +81,7 @@ int generateRevision(FILE *conf, char *repo) {
     FILE *stream = popen(command, "r");
     if (fgets(buf, buf_size, stream) == 0 || buf[0] < '0' || buf[0] > '9') {
         fclose(stream);
-        return 1;
+        return 0;
     }
     strptime(buf, "%Y-%m-%d %H:%M:%S %z", &latest_commit);
     fclose(stream);
