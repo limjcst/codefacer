@@ -180,6 +180,11 @@ void createConf(char *confPath, char *repoPath, char *username, char *name) {
     fprintf(conf, "project: %s@%s\n", username, name);
     fprintf(conf, "description: \n");
     fprintf(conf, "repo: .\n");
+    /**
+     * tag analysis leads to some errors.
+     * window analysis is proper.
+     **/
+    tagExist = 0;
     if (tagExist) {
         fprintf(conf, "revisions: [%s]\n", revisions);
         fprintf(conf, "rcs: [%s]\n", rcs);
@@ -227,8 +232,8 @@ int run(int jobs){
     int maxID = atoi(row[0]);
     printf("%d\n\n", maxID);
     mysql_free_result(result);
-
-    for (int i = 1; i <= maxID; ++i) {
+    int i;
+    for (i = 1; i <= maxID; ++i) {
         sprintf(query, "select name, path, creator_id from projects WHERE id=%d", i);
         if (mysql_query(&db, query) == 0) {
             result = mysql_store_result(&db);
@@ -282,7 +287,7 @@ int main(void) {
     FILE *stream = popen("nproc", "r");
     int jobs;
     fscanf(stream, "%d", &jobs);
-    jobs -= 1;
+    jobs /= 2;
     if (jobs == 0) {
         jobs = 1;
     }
