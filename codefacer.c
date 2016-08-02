@@ -132,7 +132,7 @@ int generateRevision(FILE *conf, char *repo) {
         ++head;
     }
     int i = 0;
-    for (; head < tail; ++ head) {
+    for (; head <= tail; ++ head) {
         fprintf(conf, "'%s', ", recs[head]);
         ++i;
     }
