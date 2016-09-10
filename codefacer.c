@@ -77,7 +77,7 @@ int generateRevision(FILE *conf, char *repo) {
     struct tm latest_commit, date_temp;
     time_t temp, week;
     week = 7 * 86400;
-    sprintf(command, "git --git-dir=%s show --format=%%ad  --date=iso8601", repo);
+    sprintf(command, "git --git-dir=%s log --format=%%ad --date=iso8601 --all --max-count=1", repo);
     FILE *stream = popen(command, "r");
     if (fgets(buf, buf_size, stream) == 0 || buf[0] < '0' || buf[0] > '9') {
         fclose(stream);
@@ -88,7 +88,7 @@ int generateRevision(FILE *conf, char *repo) {
     temp = mktime(&latest_commit);
     latest_commit = *localtime(&temp);
     strftime(buf, buf_size, "--before=%Y-%m-%dT%H:%M:%S%z", &latest_commit);
-    sprintf(command, "git --git-dir=%s log --no-merges --format='%%H %%ct' --max-count=1 %s", repo, buf);
+    sprintf(command, "git --git-dir=%s log --no-merges --format='%%H %%ct' --all --max-count=1 %s", repo, buf);
     stream = popen(command, "r");
     while (fgets(buf, buf_size, stream)) {
         --head;
@@ -103,7 +103,7 @@ int generateRevision(FILE *conf, char *repo) {
         temp -= week * start;
         date_temp = *gmtime(&temp);
         strftime(buf, buf_size, "--before=%Y-%m-%dT%H:%M:%S%z", &date_temp);
-        sprintf(command, "git --git-dir=%s log --no-merges --format='%%H %%ct' --max-count=1 %s", repo, buf);
+        sprintf(command, "git --git-dir=%s log --no-merges --format='%%H %%ct' --all --max-count=1 %s", repo, buf);
         stream = popen(command, "r");
         if (fgets(buf, buf_size, stream)) {
             end = start;
@@ -111,7 +111,7 @@ int generateRevision(FILE *conf, char *repo) {
         } else {
             fclose(stream);
             start = end;
-            sprintf(command, "git --git-dir=%s log --no-merges --format='%%H %%ct' --max-count=1 --reverse", repo);
+            sprintf(command, "git --git-dir=%s log --no-merges --format='%%H %%ct' --all --reverse", repo);
             stream = popen(command, "r");
             if (fgets(buf, buf_size, stream) == 0) {
                 fclose(stream);
