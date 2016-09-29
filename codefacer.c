@@ -198,7 +198,8 @@ int createConf(char *confPath, char *repoPath, char *username, char *name) {
         //use commit hash substitute
         fprintf(conf, "revisions: [");
         int i = generateRevision(conf, repoPath);
-        if (i == 0) {
+        // empty repository or only one commit is not worth continuing
+        if (i <= 1) {
             fclose(conf);
             return 1;
         }
