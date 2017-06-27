@@ -251,7 +251,7 @@ int run(int jobs){
     mysql_free_result(result);
     int i;
     for (i = 1; i <= maxID; ++i) {
-        sprintf(query, "select name, path, namespace_id from projects WHERE id=%d", i);
+        sprintf(query, "select name, namespace_id from projects WHERE id=%d", i);
         if (mysql_query(&db, query) == 0) {
             result = mysql_store_result(&db);
             if (mysql_num_rows(result) == 0) {
@@ -261,11 +261,10 @@ int run(int jobs){
         }
         MYSQL_ROW row = mysql_fetch_row(result);
         char *name = row[0];
-        char *path = row[1];
-        int id = atoi(row[2]);
-        printf("%s %s %d\n", name, path, id);
+        int id = atoi(row[1]);
+        printf("%s %d\n", name, id);
         char *namespace_name;
-        sprintf(query, "select name from users WHERE id=%d", id);
+        sprintf(query, "select name from namespaces WHERE id=%d", id);
         if (mysql_query(&db, query) == 0) {
             MYSQL_RES *resultUN = mysql_store_result(&db);
             MYSQL_ROW rowUN = mysql_fetch_row(resultUN);
