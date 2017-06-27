@@ -273,7 +273,7 @@ int run(int jobs){
             strcpy(repoPath, global_conf.repo_path);
             strcat(repoPath, namespace_name);
             strcat(repoPath, "/");
-            strcat(repoPath, path);
+            strcat(repoPath, name);
             strcat(repoPath, ".git/");
 
             char confPath[buf_size];
