@@ -139,7 +139,7 @@ int generateRevision(FILE *conf, char *repo) {
     return i;
 }
 
-int createConf(char *confPath, char *repoPath, char *username, char *name) {
+int createConf(char *confPath, char *repoPath, char *namespace_name, char *name) {
     char revisions[100 * buf_size] = "\0";
     char rcs[100 * buf_size] = "\0";
     FILE *conf = fopen(confPath, "wb");
@@ -183,7 +183,7 @@ int createConf(char *confPath, char *repoPath, char *username, char *name) {
         }
     }
     fclose(stream);
-    fprintf(conf, "project: %s@%s\n", username, name);
+    fprintf(conf, "project: %s@%s\n", namespace_name, name);
     fprintf(conf, "description: \n");
     fprintf(conf, "repo: .\n");
     /**
@@ -251,7 +251,7 @@ int run(int jobs){
     mysql_free_result(result);
     int i;
     for (i = 1; i <= maxID; ++i) {
-        sprintf(query, "select name, path, creator_id from projects WHERE id=%d", i);
+        sprintf(query, "select name, namespace_id from projects WHERE id=%d", i);
         if (mysql_query(&db, query) == 0) {
             result = mysql_store_result(&db);
             if (mysql_num_rows(result) == 0) {
@@ -261,32 +261,31 @@ int run(int jobs){
         }
         MYSQL_ROW row = mysql_fetch_row(result);
         char *name = row[0];
-        char *path = row[1];
-        int id = atoi(row[2]);
-        printf("%s %s %d\n", name, path, id);
-        char *username;
-        sprintf(query, "select username from users WHERE id=%d", id);
+        int id = atoi(row[1]);
+        printf("%s %d\n", name, id);
+        char *namespace_name;
+        sprintf(query, "select name from namespaces WHERE id=%d", id);
         if (mysql_query(&db, query) == 0) {
             MYSQL_RES *resultUN = mysql_store_result(&db);
             MYSQL_ROW rowUN = mysql_fetch_row(resultUN);
-            username = rowUN[0];
+            namespace_name = rowUN[0];
             char repoPath[buf_size];
             strcpy(repoPath, global_conf.repo_path);
-            strcat(repoPath, username);
+            strcat(repoPath, namespace_name);
             strcat(repoPath, "/");
-            strcat(repoPath, path);
+            strcat(repoPath, name);
             strcat(repoPath, ".git/");
 
             char confPath[buf_size];
             strcpy(confPath, global_conf.conf_path);
             mkdir(confPath, S_IRWXU | S_IRWXG);
-            strcat(confPath, username);
+            strcat(confPath, namespace_name);
             strcat(confPath, "/");
             mkdir(confPath, S_IRWXU | S_IRWXG);
             strcat(confPath, name);
             strcat(confPath, ".conf");
 
-            if (createConf(confPath, repoPath, username, name)) {
+            if (createConf(confPath, repoPath, namespace_name, name)) {
                 mysql_free_result(resultUN);
                 printf("Nothing to analyze!\n");
                 continue;
